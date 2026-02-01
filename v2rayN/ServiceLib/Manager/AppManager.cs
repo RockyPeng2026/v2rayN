@@ -31,6 +31,8 @@ public sealed class AppManager
 
     public string LinuxSudoPwd { get; set; }
 
+    public bool? HasPasswordlessSudo { get; private set; }
+
     public bool ShowInTaskbar { get; set; }
 
     public ECoreType RunningCoreType { get; set; }
@@ -94,6 +96,11 @@ public sealed class AppManager
         _ = StatePort;
         _ = StatePort2;
 
+        if (Utils.IsNonWindows())
+        {
+            Task.Run(async () => await CheckPasswordlessSudoAsync()).Wait();
+        }
+
         return true;
     }
 
@@ -141,6 +148,46 @@ public sealed class AppManager
     {
         ProcUtils.RebootAsAdmin();
         await AppManager.Instance.AppExitAsync(true);
+    }
+
+    /// <summary>
+    /// Check if passwordless sudo is available on Linux/macOS
+    /// </summary>
+    public async Task<bool> CheckPasswordlessSudoAsync()
+    {
+        if (Utils.IsWindows())
+        {
+            return false;
+        }
+
+        if (HasPasswordlessSudo.HasValue)
+        {
+            return HasPasswordlessSudo.Value;
+        }
+
+        try
+        {
+            // Try to run 'sudo -n true' which will succeed only if passwordless sudo is configured
+            var result = await Cli.Wrap("sudo")
+                .WithArguments(new[] { "-n", "true" })
+                .WithValidation(CommandResultValidation.None)
+                .ExecuteAsync();
+
+            HasPasswordlessSudo = result.ExitCode == 0;
+            if (HasPasswordlessSudo.Value)
+            {
+                // Set a placeholder password so the rest of the code thinks we have one
+                LinuxSudoPwd = " ";
+                Logging.SaveLog("Passwordless sudo detected");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("CheckPasswordlessSudoAsync", ex);
+            HasPasswordlessSudo = false;
+        }
+
+        return HasPasswordlessSudo.Value;
     }
 
     #endregion App

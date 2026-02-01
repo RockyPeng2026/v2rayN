@@ -482,11 +482,19 @@ public class StatusBarViewModel : MyReactiveObject
             }
             else
             {
-                bool? passwordResult = await _updateView?.Invoke(EViewAction.PasswordInput, null);
-                if (passwordResult == false)
+                // First check if passwordless sudo is available
+                if (await AppManager.Instance.CheckPasswordlessSudoAsync())
                 {
-                    _config.TunModeItem.EnableTun = false;
-                    return;
+                    // Passwordless sudo is available, no need to prompt
+                }
+                else
+                {
+                    bool? passwordResult = await _updateView?.Invoke(EViewAction.PasswordInput, null);
+                    if (passwordResult == false)
+                    {
+                        _config.TunModeItem.EnableTun = false;
+                        return;
+                    }
                 }
             }
         }
@@ -502,11 +510,14 @@ public class StatusBarViewModel : MyReactiveObject
         }
         else if (Utils.IsLinux())
         {
-            return AppManager.Instance.LinuxSudoPwd.IsNotEmpty();
+            // Allow if password is set OR if passwordless sudo is available
+            return AppManager.Instance.LinuxSudoPwd.IsNotEmpty() 
+                || AppManager.Instance.HasPasswordlessSudo == true;
         }
         else if (Utils.IsMacOS())
         {
-            return AppManager.Instance.LinuxSudoPwd.IsNotEmpty();
+            return AppManager.Instance.LinuxSudoPwd.IsNotEmpty()
+                || AppManager.Instance.HasPasswordlessSudo == true;
         }
         return false;
     }
